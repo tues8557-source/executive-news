@@ -12,10 +12,13 @@
         <p class="eyebrow">어느 행정 부처인지 맞춰보세요</p>
         <h1>행정부 카드뉴스</h1>
       </div>
-      <nav class="header-links" aria-label="외부 링크">
-        <a class="source-link" href="https://www.korea.kr/multi/visualNewsList.do" target="_blank" rel="noreferrer">카드뉴스 원본</a>
-        <a class="source-link org-link" href="https://www.gov.kr/portal/orgInfo" target="_blank" rel="noreferrer">중앙행정기관 조직도</a>
-      </nav>
+      <div class="header-actions">
+        <nav class="header-links" aria-label="외부 링크">
+          <a class="source-link" href="https://www.korea.kr/multi/visualNewsList.do" target="_blank" rel="noreferrer">카드뉴스 원본</a>
+          <a class="source-link org-link" href="https://www.gov.kr/portal/orgInfo" target="_blank" rel="noreferrer">중앙행정기관 조직도</a>
+        </nav>
+        <div class="filter-hint" aria-hidden="true">필터 버튼으로 행정 부처를 선택하세요.</div>
+      </div>
     </header>
 
     <main>
@@ -39,11 +42,11 @@
 
     <div class="filter-options" id="filterOptions" hidden>
       <label><input type="checkbox" value="ministry" checked> 부</label>
-      <label><input type="checkbox" value="office" checked> 처</label>
-      <label><input type="checkbox" value="agency" checked> 청</label>
-      <label><input type="checkbox" value="committee" checked> 위원회</label>
+      <label><input type="checkbox" value="office"> 처</label>
+      <label><input type="checkbox" value="agency"> 청</label>
+      <label><input type="checkbox" value="committee"> 위원회</label>
       <label class="filter-option-stacked">
-        <span><input type="checkbox" value="other" checked> 기타</span>
+        <span><input type="checkbox" value="other"> 기타</span>
         <small>국무조정실, 문화체육관광부 국민소통실 등</small>
       </label>
     </div>

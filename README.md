@@ -11,6 +11,11 @@ npm run dev
 
 브라우저에서 `http://localhost:4173`을 열면 됩니다. 서버는 korea.kr 목록 HTML을 `/api/cards?page=1` 형식으로 가져와 파싱합니다.
 
-## Fly.io 배포
+## Cloudflare Workers 배포
 
-Fly에서는 기본적으로 `0.0.0.0:8080`에서 서버가 실행됩니다. `fly.toml`의 `internal_port`는 `8080`으로 두면 됩니다.
+Cloudflare Workers에서는 정적 파일을 `public/`에서 제공하고, `src/worker.js`가 `/api/cards`와 `/api/image`를 처리합니다.
+
+```bash
+npm run worker:dev
+npm run deploy
+```

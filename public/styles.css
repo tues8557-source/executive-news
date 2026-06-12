@@ -74,6 +74,41 @@ h1 {
   gap: 8px;
 }
 
+.header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.filter-hint {
+  position: relative;
+  width: max-content;
+  max-width: min(320px, 74vw);
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 52%, #ffffff);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.filter-hint::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  right: 24px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid color-mix(in srgb, var(--accent) 52%, #ffffff);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 52%, #ffffff);
+  background: #ffffff;
+  transform: rotate(45deg);
+}
+
 .org-link {
   min-width: 172px;
 }
@@ -191,16 +226,23 @@ main {
   justify-content: center;
   min-width: 72px;
   height: 38px;
-  border: 1px solid var(--line);
+  border: 2px solid var(--accent);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.22);
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 900;
 }
 
 .filter-trigger[aria-expanded="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: #0b5f59;
+  color: var(--accent-ink);
+}
+
+.filter-trigger:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.28);
+  outline-offset: 2px;
 }
 
 .filter-options {
@@ -514,6 +556,20 @@ main {
 
   .header-links {
     justify-content: flex-start;
+  }
+
+  .header-actions {
+    justify-items: start;
+  }
+
+  .filter-hint {
+    max-width: min(320px, 92vw);
+    white-space: normal;
+  }
+
+  .filter-hint::after {
+    right: auto;
+    left: 24px;
   }
 
   main {

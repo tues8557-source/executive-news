@@ -9,12 +9,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function waitForCards(page, imageCount = 3) {
+async function waitForCards(page, imageCount = 1, minCards = 6) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".card", { timeout: 30000 });
   await page.waitForFunction(
-    () => document.querySelectorAll(".card").length >= 18,
-    null,
+    (expectedCards) => document.querySelectorAll(".card").length >= expectedCards,
+    minCards,
     { timeout: 30000 },
   );
   await page.waitForFunction(
@@ -64,7 +64,7 @@ try {
   await screenshot(desktop, "desktop-gallery.png");
 
   const cardCount = await desktop.locator(".card").count();
-  assert(cardCount >= 18, `expected at least 18 cards, got ${cardCount}`);
+  assert(cardCount >= 6, `expected at least 6 ministry cards, got ${cardCount}`);
 
   const desktopColumns = await visibleCardsInFirstRow(desktop);
   assert(desktopColumns === 3, `expected 3 desktop columns, got ${desktopColumns}`);
@@ -87,18 +87,20 @@ try {
   );
 
   await desktop.locator("#filterTrigger").click();
-  await desktop.locator('#filterOptions input[value="other"]').uncheck();
-  await desktop.waitForFunction(
-    () => ![...document.querySelectorAll(".card-title")]
-      .some((title) => title.textContent?.includes("햇빛소득마을")),
-    null,
-    { timeout: 10000 },
-  );
   assert(
     await desktop.locator('#filterOptions input[value="ministry"]').isChecked(),
     "ministry filter should remain checked",
   );
-  await desktop.locator('#filterOptions input[value="other"]').check();
+  assert(
+    !(await desktop.locator('#filterOptions input[value="office"]').isChecked())
+      && !(await desktop.locator('#filterOptions input[value="agency"]').isChecked())
+      && !(await desktop.locator('#filterOptions input[value="committee"]').isChecked())
+      && !(await desktop.locator('#filterOptions input[value="other"]').isChecked()),
+    "only ministry filter should be checked by default",
+  );
+  for (const value of ["office", "agency", "committee", "other"]) {
+    await desktop.locator(`#filterOptions input[value="${value}"]`).check();
+  }
   await desktop.waitForFunction(
     () => document.querySelectorAll(".card").length >= 18,
     null,
@@ -178,7 +180,7 @@ try {
     isMobile: true,
   });
 
-  await waitForCards(mobile, 6);
+  await waitForCards(mobile, 1, 3);
   await screenshot(mobile, "mobile-gallery.png");
   const mobileColumns = await visibleCardsInFirstRow(mobile);
   assert(mobileColumns === 1, `expected 1 mobile column, got ${mobileColumns}`);

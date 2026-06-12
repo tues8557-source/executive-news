@@ -7,7 +7,7 @@ const state = {
   viewerIndex: -1,
   revealedCards: new Set(),
   revealedMinistries: new Set(),
-  activeCategories: new Set(["ministry", "office", "agency", "committee", "other"]),
+  activeCategories: new Set(["ministry"]),
   loading: false,
   autoLoading: false,
 };
