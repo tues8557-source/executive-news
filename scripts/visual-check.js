@@ -119,14 +119,32 @@ try {
   await desktop.waitForSelector(".viewer.open", { timeout: 10000 });
   await screenshot(desktop, "desktop-viewer-masked.png", { fullPage: false });
 
-  const hiddenMinistry = (await desktop.locator("#viewerMask").textContent()).trim();
-  assert(hiddenMinistry === "", "viewer ministry should be hidden initially");
+  const galleryRevealedMinistry = (await desktop.locator("#viewerMask").textContent()).trim();
+  assert(galleryRevealedMinistry.length > 0, "viewer ministry should be revealed after gallery reveal");
 
+  await desktop.locator("#viewerNext").click();
+  await desktop.waitForFunction(
+    () => document.querySelector("#viewerMask")?.textContent.trim() === "",
+    null,
+    { timeout: 10000 },
+  );
   await desktop.locator("#viewerMask").click();
   await screenshot(desktop, "desktop-viewer-revealed.png", { fullPage: false });
   const revealedMinistry = (await desktop.locator("#viewerMask").textContent()).trim();
   assert(revealedMinistry.length > 0, "viewer ministry should be revealed after click");
+  await desktop.locator("#closeViewer").click();
+  await desktop.waitForFunction(
+    () => !document.querySelector(".viewer")?.classList.contains("open"),
+    null,
+    { timeout: 10000 },
+  );
+  assert(
+    !(await desktop.locator(".card").nth(1).locator(".reveal-mask").isVisible()),
+    "gallery mask should disappear after viewer reveal",
+  );
 
+  await desktop.locator(".card").nth(1).click();
+  await desktop.waitForSelector(".viewer.open", { timeout: 10000 });
   const titleBeforeNext = await desktop.locator("#viewerTitle").textContent();
   await desktop.locator("#viewerNext").click();
   await desktop.waitForFunction(
@@ -174,6 +192,93 @@ try {
   const page10Status = await desktop.locator("#pageInput").inputValue();
   assert(page10Status === "10", `expected page 10 indicator, got ${page10Status}`);
   assert((await desktop.locator("#pageInput").inputValue()) === "10", "page input should show jumped page");
+
+  const filteredGap = await browser.newPage({
+    viewport: { width: 1024, height: 760 },
+    deviceScaleFactor: 1,
+  });
+  const mockImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640' viewBox='0 0 640 640'%3E%3Crect width='640' height='640' fill='%23e6f4ff'/%3E%3Ctext x='320' y='320' font-size='42' text-anchor='middle' fill='%23122333'%3Emock card%3C/text%3E%3C/svg%3E";
+  const mockCards = {
+    1: [
+      {
+        id: "committee-1",
+        page: 1,
+        indexInPage: 0,
+        title: "위원회 첫 카드",
+        date: "2026.06.12",
+        ministry: "국가위원회",
+        image: mockImage,
+        originalImage: mockImage,
+      },
+      {
+        id: "ministry-1",
+        page: 1,
+        indexInPage: 1,
+        title: "부처 카드",
+        date: "2026.06.12",
+        ministry: "교육부",
+        image: mockImage,
+        originalImage: mockImage,
+      },
+    ],
+    2: [
+      {
+        id: "ministry-2",
+        page: 2,
+        indexInPage: 0,
+        title: "위원회가 없는 페이지",
+        date: "2026.06.12",
+        ministry: "과학기술정보통신부",
+        image: mockImage,
+        originalImage: mockImage,
+      },
+    ],
+    3: [
+      {
+        id: "committee-3",
+        page: 3,
+        indexInPage: 0,
+        title: "위원회 다음 카드",
+        date: "2026.06.12",
+        ministry: "방송통신위원회",
+        image: mockImage,
+        originalImage: mockImage,
+      },
+    ],
+  };
+
+  await filteredGap.route("**/api/cards?page=*", async (route) => {
+    const page = Number(new URL(route.request().url()).searchParams.get("page"));
+    await route.fulfill({
+      json: {
+        page,
+        lastPage: 3,
+        pageNumbers: [1, 2, 3],
+        cards: mockCards[page] || [],
+      },
+    });
+  });
+  await waitForCards(filteredGap, 1, 1);
+  await filteredGap.locator("#filterTrigger").click();
+  await filteredGap.locator('#filterOptions input[value="committee"]').check();
+  await filteredGap.locator('#filterOptions input[value="ministry"]').uncheck();
+  await filteredGap.locator("#filterTrigger").click();
+  await filteredGap.waitForFunction(
+    () => [...document.querySelectorAll(".card-title")]
+      .some((title) => title.textContent.includes("위원회 첫 카드")),
+    null,
+    { timeout: 10000 },
+  );
+  await filteredGap.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await filteredGap.waitForFunction(
+    () => document.querySelector("#pageInput")?.value === "3"
+      && [...document.querySelectorAll(".card-title")].some((title) => title.textContent.includes("위원회 다음 카드")),
+    null,
+    { timeout: 10000 },
+  );
+  const filteredGapCount = await filteredGap.locator(".card").count();
+  assert(filteredGapCount === 2, `expected filtered scroll to skip empty page and show 2 cards, got ${filteredGapCount}`);
+  await filteredGap.close();
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },

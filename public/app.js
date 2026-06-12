@@ -6,7 +6,6 @@ const state = {
   loadedPages: new Set(),
   viewerIndex: -1,
   revealedCards: new Set(),
-  revealedMinistries: new Set(),
   activeCategories: new Set(["ministry"]),
   loading: false,
   autoLoading: false,
@@ -83,7 +82,7 @@ function setFilterMenu(open) {
 }
 
 async function loadPage(page, options = {}) {
-  if (state.loading) return;
+  if (state.loading) return false;
   const pageNumber = Math.max(1, Math.min(state.lastPage || page, Number(page) || 1));
 
   if (state.loadedPages.has(pageNumber) && !options.forceReload) {
@@ -92,7 +91,7 @@ async function loadPage(page, options = {}) {
     updateStatus();
     if (options.scrollToPage) scrollToPage(pageNumber);
     if (options.openIndex !== undefined) openViewer(options.openIndex);
-    return;
+    return true;
   }
 
   state.loading = true;
@@ -132,11 +131,12 @@ async function loadPage(page, options = {}) {
     if (options.openIndex !== undefined) {
       openViewer(options.openIndex);
     }
+    return true;
   } catch (error) {
     setStatus(`카드뉴스를 가져오지 못했습니다. ${error.message}`, true);
+    return false;
   } finally {
     state.loading = false;
-    state.autoLoading = false;
     updatePager();
   }
 }
@@ -215,7 +215,7 @@ function renderViewer() {
   const card = currentCard();
   if (!card) return;
 
-  const ministryRevealed = state.revealedMinistries.has(card.id);
+  const ministryRevealed = state.revealedCards.has(card.id);
   viewerImage.src = card.image;
   viewerImage.alt = card.title;
   viewerTitle.textContent = card.title;
@@ -236,7 +236,12 @@ async function goViewer(delta) {
 
   if (delta > 0 && state.page < state.lastPage) {
     const previousLength = cards.length;
-    await loadPage(state.page + 1);
+    while (state.page < state.lastPage && visibleCards().length <= previousLength) {
+      const previousPage = state.page;
+      const loaded = await loadPage(state.page + 1);
+      if (!loaded || state.page === previousPage) break;
+    }
+
     if (visibleCards().length > previousLength) {
       openViewer(previousLength);
     }
@@ -244,12 +249,23 @@ async function goViewer(delta) {
   }
 
   if (delta < 0 && state.page > 1) {
-    const targetPage = state.page - 1;
-    await loadPage(targetPage, { scrollToPage: true });
-    const previousPageCards = visibleCards()
-      .map((card, index) => ({ card, index }))
-      .filter(({ card }) => card.page === targetPage);
-    openViewer(previousPageCards.at(-1)?.index ?? 0);
+    let targetPage = state.page - 1;
+
+    while (targetPage >= 1) {
+      const loaded = await loadPage(targetPage, { scrollToPage: true });
+      if (!loaded) break;
+
+      const previousPageCards = visibleCards()
+        .map((card, index) => ({ card, index }))
+        .filter(({ card }) => card.page === targetPage);
+
+      if (previousPageCards.length) {
+        openViewer(previousPageCards.at(-1).index);
+        return;
+      }
+
+      targetPage -= 1;
+    }
   }
 }
 
@@ -258,10 +274,25 @@ function scrollToPage(page) {
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function shouldLoadMoreFromScrollPosition() {
+  const sentinelTop = scrollSentinel.getBoundingClientRect().top;
+  return sentinelTop <= window.innerHeight + 900;
+}
+
 async function loadNextPageAutomatically() {
-  if (state.loading || state.autoLoading || state.page >= state.lastPage) return;
+  if (state.loading || state.autoLoading || state.page >= state.lastPage || state.activeCategories.size === 0) return;
   state.autoLoading = true;
-  await loadPage(state.page + 1);
+  const previousVisibleCount = visibleCards().length;
+
+  try {
+    while (state.page < state.lastPage && visibleCards().length <= previousVisibleCount) {
+      const previousPage = state.page;
+      const loaded = await loadPage(state.page + 1);
+      if (!loaded || state.page === previousPage) break;
+    }
+  } finally {
+    state.autoLoading = false;
+  }
 }
 
 gallery.addEventListener("click", (event) => {
@@ -286,6 +317,9 @@ filterOptions.addEventListener("change", () => {
   updateStatus();
   if (viewer.classList.contains("open")) {
     closeViewerModal();
+  }
+  if (shouldLoadMoreFromScrollPosition()) {
+    loadNextPageAutomatically();
   }
 });
 
@@ -324,7 +358,8 @@ viewerNext.addEventListener("click", () => goViewer(1));
 viewerMask.addEventListener("click", () => {
   const card = currentCard();
   if (!card) return;
-  state.revealedMinistries.add(card.id);
+  state.revealedCards.add(card.id);
+  gallery.querySelector(`[data-id="${CSS.escape(card.id)}"]`)?.classList.add("revealed");
   renderViewer();
 });
 
