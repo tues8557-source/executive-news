@@ -153,16 +153,31 @@ try {
 
   await desktop.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await desktop.waitForFunction(
-    () => document.querySelectorAll(".card").length >= 36
-      && document.querySelector("#pageInput")?.value === "2",
+    () => document.querySelectorAll(".card").length >= 36,
     null,
     { timeout: 30000 },
   );
+  await desktop.evaluate(() => {
+    document.querySelector('.card[data-page="2"]')?.scrollIntoView({ block: "start", behavior: "auto" });
+  });
+  await desktop.waitForFunction(
+    () => document.querySelector("#pageInput")?.value === "2"
+      && document.querySelector("#pageCurrent")?.textContent.trim() === "2",
+    null,
+    { timeout: 10000 },
+  );
   await screenshot(desktop, "desktop-page-2.png");
   const page2Status = await desktop.locator("#pageInput").inputValue();
-  assert(Number(page2Status) >= 2, `expected page 2 or later indicator, got ${page2Status}`);
+  assert(page2Status === "2", `expected page 2 indicator, got ${page2Status}`);
   const loadedCardCount = await desktop.locator(".card").count();
   assert(loadedCardCount >= 36, `expected infinite scroll to append page 2, got ${loadedCardCount}`);
+  await desktop.evaluate(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  await desktop.waitForFunction(
+    () => document.querySelector("#pageInput")?.value === "1"
+      && document.querySelector("#pageCurrent")?.textContent.trim() === "1",
+    null,
+    { timeout: 10000 },
+  );
 
   const page10Response = desktop.waitForResponse(
     (response) => response.url().includes("/api/cards?page=10") && response.ok(),
@@ -173,14 +188,20 @@ try {
   await desktop.locator('[data-page-pick="10"]').click();
   await page10Response;
   await desktop.waitForFunction(
-    () => document.querySelector("#pageInput")?.value === "10"
-      && document.querySelector('[data-page="10"]'),
+    () => {
+      const target = document.querySelector('[data-page="10"]');
+      if (!target) return false;
+      const rect = target.getBoundingClientRect();
+      return rect.top >= 0
+        && rect.top < window.innerHeight * 0.5
+        && document.querySelector("#pageInput")?.value === "10"
+        && document.querySelector("#pageCurrent")?.textContent.trim() === "10";
+    },
     null,
     { timeout: 30000 },
   );
   const page10Status = await desktop.locator("#pageInput").evaluate((input) => input.value);
   assert(page10Status === "10", `expected page 10 indicator, got ${page10Status}`);
-  assert((await desktop.locator("#pageCurrent").textContent())?.trim() === "10", "page trigger should show jumped page");
 
   const filteredGap = await browser.newPage({
     viewport: { width: 1024, height: 760 },
@@ -260,11 +281,17 @@ try {
   );
   await filteredGap.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await filteredGap.waitForFunction(
-    () => document.querySelector("#pageInput")?.value === "3"
-      && [...document.querySelectorAll(".card-title")].some((title) => title.textContent.includes("위원회 다음 카드")),
+    () => [...document.querySelectorAll(".card-title")]
+      .some((title) => title.textContent.includes("위원회 다음 카드")),
     null,
     { timeout: 10000 },
   );
+  await filteredGap.evaluate(() => {
+    [...document.querySelectorAll(".card-title")]
+      .find((title) => title.textContent.includes("위원회 다음 카드"))
+      ?.closest(".card")
+      ?.scrollIntoView({ block: "start", behavior: "auto" });
+  });
   const filteredGapCount = await filteredGap.locator(".card").count();
   assert(filteredGapCount === 2, `expected filtered scroll to skip empty page and show 2 cards, got ${filteredGapCount}`);
   await filteredGap.close();

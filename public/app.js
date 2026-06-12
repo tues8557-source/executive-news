@@ -1,6 +1,7 @@
 const state = {
   page: 1,
   lastPage: 1,
+  maxLoadedPage: 0,
   pageNumbers: [],
   cards: [],
   loadedPages: new Set(),
@@ -35,6 +36,7 @@ const viewerMask = document.querySelector("#viewerMask");
 const viewerPrev = document.querySelector("#viewerPrev");
 const viewerNext = document.querySelector("#viewerNext");
 const closeViewer = document.querySelector("#closeViewer");
+let pageSyncFrame = 0;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -126,13 +128,71 @@ function setPagePicker(open) {
   pagePickerTrigger.setAttribute("aria-expanded", String(open));
 }
 
+function updateCurrentPage(page, options = {}) {
+  const nextPage = Math.max(1, Math.min(state.lastPage || page, Number(page) || 1));
+  if (!nextPage || nextPage === state.page) return;
+  state.page = nextPage;
+  if (!options.skipPagerUpdate) {
+    updatePager();
+  }
+}
+
+function viewportPage() {
+  const cards = [...gallery.querySelectorAll(".card")];
+  if (!cards.length) return state.page;
+
+  const anchorY = Math.min(window.innerHeight * 0.28, 220);
+  let bestPage = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const card of cards) {
+    const rect = card.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
+
+    const page = Number(card.dataset.page);
+    if (!page) continue;
+
+    const distance = rect.top <= anchorY && rect.bottom >= anchorY
+      ? 0
+      : Math.min(Math.abs(rect.top - anchorY), Math.abs(rect.bottom - anchorY));
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestPage = page;
+    }
+  }
+
+  return bestPage || state.page;
+}
+
+function syncPageWithViewport() {
+  pageSyncFrame = 0;
+  if (viewer.classList.contains("open")) {
+    const cardPage = currentCard()?.page;
+    if (cardPage) updateCurrentPage(cardPage);
+    return;
+  }
+
+  const nextPage = viewportPage();
+  if (nextPage) updateCurrentPage(nextPage);
+}
+
+function scheduleViewportPageSync() {
+  if (pageSyncFrame) return;
+  pageSyncFrame = window.requestAnimationFrame(syncPageWithViewport);
+}
+
 async function loadPage(page, options = {}) {
   if (state.loading) return false;
   const pageNumber = Math.max(1, Math.min(state.lastPage || page, Number(page) || 1));
+  const shouldAdoptLoadedPage = !state.cards.length || options.replace || options.scrollToPage || options.openIndex !== undefined;
 
   if (state.loadedPages.has(pageNumber) && !options.forceReload) {
-    state.page = pageNumber;
-    updatePager();
+    if (shouldAdoptLoadedPage) {
+      updateCurrentPage(pageNumber);
+    } else {
+      updatePager();
+    }
     updateStatus();
     if (options.scrollToPage) scrollToPage(pageNumber);
     if (options.openIndex !== undefined) openViewer(options.openIndex);
@@ -151,14 +211,15 @@ async function loadPage(page, options = {}) {
       throw new Error(data.detail || data.error || "load failed");
     }
 
-    state.page = data.page;
     state.lastPage = data.lastPage;
+    state.maxLoadedPage = options.replace ? data.page : Math.max(state.maxLoadedPage, data.page);
     state.pageNumbers = data.pageNumbers.length ? data.pageNumbers : buildFallbackPages(data.page, data.lastPage);
     state.loadedPages.add(data.page);
 
     if (options.replace) {
       state.cards = data.cards;
       state.loadedPages = new Set([data.page]);
+      state.maxLoadedPage = data.page;
     } else {
       const existingIds = new Set(state.cards.map((card) => card.id));
       const appendedCards = data.cards.filter((card) => !existingIds.has(card.id));
@@ -166,12 +227,18 @@ async function loadPage(page, options = {}) {
       state.cards.sort((a, b) => a.page - b.page || a.indexInPage - b.indexInPage);
     }
 
+    if (shouldAdoptLoadedPage) {
+      updateCurrentPage(data.page, { skipPagerUpdate: true });
+    }
     renderGallery();
     updatePager();
     updateStatus();
 
     if (options.scrollToPage) {
       scrollToPage(data.page);
+    }
+    if (!shouldAdoptLoadedPage) {
+      scheduleViewportPageSync();
     }
 
     if (options.openIndex !== undefined) {
@@ -242,6 +309,7 @@ function openViewer(index) {
   if (!card) return;
 
   state.viewerIndex = index;
+  updateCurrentPage(card.page);
   viewer.classList.add("open");
   viewer.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
@@ -253,6 +321,7 @@ function closeViewerModal() {
   viewer.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
   state.viewerIndex = -1;
+  scheduleViewportPageSync();
 }
 
 function renderViewer() {
@@ -274,16 +343,17 @@ async function goViewer(delta) {
   const cards = visibleCards();
   if (state.viewerIndex + delta >= 0 && state.viewerIndex + delta < cards.length) {
     state.viewerIndex += delta;
+    updateCurrentPage(cards[state.viewerIndex].page);
     renderViewer();
     return;
   }
 
-  if (delta > 0 && state.page < state.lastPage) {
+  if (delta > 0 && state.maxLoadedPage < state.lastPage) {
     const previousLength = cards.length;
-    while (state.page < state.lastPage && visibleCards().length <= previousLength) {
-      const previousPage = state.page;
-      const loaded = await loadPage(state.page + 1);
-      if (!loaded || state.page === previousPage) break;
+    while (state.maxLoadedPage < state.lastPage && visibleCards().length <= previousLength) {
+      const previousMaxLoadedPage = state.maxLoadedPage;
+      const loaded = await loadPage(state.maxLoadedPage + 1);
+      if (!loaded || state.maxLoadedPage === previousMaxLoadedPage) break;
     }
 
     if (visibleCards().length > previousLength) {
@@ -292,8 +362,9 @@ async function goViewer(delta) {
     return;
   }
 
-  if (delta < 0 && state.page > 1) {
-    let targetPage = state.page - 1;
+  const viewerPage = currentCard()?.page || state.page;
+  if (delta < 0 && viewerPage > 1) {
+    let targetPage = viewerPage - 1;
 
     while (targetPage >= 1) {
       const loaded = await loadPage(targetPage, { scrollToPage: true });
@@ -324,15 +395,15 @@ function shouldLoadMoreFromScrollPosition() {
 }
 
 async function loadNextPageAutomatically() {
-  if (state.loading || state.autoLoading || state.page >= state.lastPage || state.activeCategories.size === 0) return;
+  if (state.loading || state.autoLoading || state.maxLoadedPage >= state.lastPage || state.activeCategories.size === 0) return;
   state.autoLoading = true;
   const previousVisibleCount = visibleCards().length;
 
   try {
-    while (state.page < state.lastPage && visibleCards().length <= previousVisibleCount) {
-      const previousPage = state.page;
-      const loaded = await loadPage(state.page + 1);
-      if (!loaded || state.page === previousPage) break;
+    while (state.maxLoadedPage < state.lastPage && visibleCards().length <= previousVisibleCount) {
+      const previousMaxLoadedPage = state.maxLoadedPage;
+      const loaded = await loadPage(state.maxLoadedPage + 1);
+      if (!loaded || state.maxLoadedPage === previousMaxLoadedPage) break;
     }
   } finally {
     state.autoLoading = false;
@@ -358,6 +429,7 @@ filterOptions.addEventListener("change", () => {
     [...filterOptions.querySelectorAll("input:checked")].map((input) => input.value),
   );
   renderGallery();
+  scheduleViewportPageSync();
   updateStatus();
   if (viewer.classList.contains("open")) {
     closeViewerModal();
@@ -394,11 +466,13 @@ document.addEventListener("click", (event) => {
 window.addEventListener("resize", () => {
   if (!filterOptions.hidden) positionFilterMenu();
   if (!pagePicker.hidden) positionPagePicker();
+  scheduleViewportPageSync();
 });
 
 window.addEventListener("scroll", () => {
   if (!filterOptions.hidden) positionFilterMenu();
   if (!pagePicker.hidden) positionPagePicker();
+  scheduleViewportPageSync();
 }, { passive: true });
 
 firstPage.addEventListener("click", () => loadPage(1, { replace: true, scrollToPage: true }));
