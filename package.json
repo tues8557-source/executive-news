@@ -1,0 +1,17 @@
+{
+  "name": "executive-news",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "visual:check": "node scripts/visual-check.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

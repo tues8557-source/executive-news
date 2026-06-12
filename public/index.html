@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>행정부 카드뉴스</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">어느 행정 부처인지 맞춰보세요</p>
+        <h1>행정부 카드뉴스</h1>
+      </div>
+      <nav class="header-links" aria-label="외부 링크">
+        <a class="source-link" href="https://www.korea.kr/multi/visualNewsList.do" target="_blank" rel="noreferrer">카드뉴스 원본</a>
+        <a class="source-link org-link" href="https://www.gov.kr/portal/orgInfo" target="_blank" rel="noreferrer">중앙행정기관 조직도</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="toolbar" aria-label="페이지 이동">
+        <button class="icon-button" id="firstPage" type="button" aria-label="첫 페이지">|&lt;</button>
+        <button class="icon-button" id="prevPage" type="button" aria-label="이전 페이지">&lt;</button>
+        <form class="page-indicator page-jump" id="pageJump" aria-label="페이지 바로 이동" aria-live="polite">
+          <input id="pageInput" type="number" inputmode="numeric" min="1" value="1" aria-label="이동할 페이지">
+          <span id="pageTotal">/ 1쪽</span>
+          <button type="submit" aria-label="입력한 페이지로 이동">이동</button>
+        </form>
+        <button class="icon-button" id="nextPage" type="button" aria-label="다음 페이지">&gt;</button>
+        <button class="icon-button" id="lastPage" type="button" aria-label="마지막 페이지">&gt;|</button>
+        <div class="status" id="status" role="status">불러오는 중</div>
+        <button class="filter-trigger" id="filterTrigger" type="button" aria-expanded="false" aria-controls="filterOptions">필터</button>
+      </section>
+
+      <section class="gallery" id="gallery" aria-label="카드뉴스 목록"></section>
+      <div class="scroll-sentinel" id="scrollSentinel" aria-hidden="true"></div>
+    </main>
+
+    <div class="filter-options" id="filterOptions" hidden>
+      <label><input type="checkbox" value="ministry" checked> 부</label>
+      <label><input type="checkbox" value="office" checked> 처</label>
+      <label><input type="checkbox" value="agency" checked> 청</label>
+      <label><input type="checkbox" value="committee" checked> 위원회</label>
+      <label class="filter-option-stacked">
+        <span><input type="checkbox" value="other" checked> 기타</span>
+        <small>국무조정실, 문화체육관광부 국민소통실 등</small>
+      </label>
+    </div>
+
+    <div class="viewer" id="viewer" aria-hidden="true">
+      <button class="viewer-close" id="closeViewer" type="button" aria-label="닫기">x</button>
+      <button class="viewer-nav viewer-prev" id="viewerPrev" type="button" aria-label="이전 카드">&lt;</button>
+      <figure class="viewer-frame">
+        <img id="viewerImage" alt="">
+        <figcaption class="viewer-caption">
+          <div>
+            <p id="viewerTitle"></p>
+            <span id="viewerDate"></span>
+          </div>
+          <button class="viewer-mask" id="viewerMask" type="button"></button>
+        </figcaption>
+      </figure>
+      <button class="viewer-nav viewer-next" id="viewerNext" type="button" aria-label="다음 카드">&gt;</button>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
