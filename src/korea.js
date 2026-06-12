@@ -1,5 +1,7 @@
-export const koreaOrigin = "https://www.korea.kr";
-export const koreaListUrl = `${koreaOrigin}/multi/visualNewsList.do`;
+export const koreaPublicOrigin = "https://www.korea.kr";
+export const koreaFetchOrigin = "https://www.korea.kr";
+export const koreaListUrl = `${koreaFetchOrigin}/multi/visualNewsList.do`;
+export const koreaPublicListUrl = `${koreaPublicOrigin}/multi/visualNewsList.do`;
 
 const cache = new Map();
 const cacheMs = 1000 * 60 * 10;
@@ -40,17 +42,30 @@ function stripTags(value = "") {
 function absoluteUrl(value = "") {
   if (!value) return "";
   if (value.startsWith("http")) return value;
-  return new URL(value, koreaOrigin).toString();
+  return new URL(value, koreaPublicOrigin).toString();
 }
 
-function proxiedImageUrl(value = "") {
-  const imageUrl = absoluteUrl(value);
-  if (!imageUrl) return "";
-  return `/api/image?url=${encodeURIComponent(imageUrl)}`;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await sleep(300 * attempt);
+      }
+    }
+  }
+  throw lastError;
 }
 
 export function parseCards(html, page) {
-  const listMatch = html.match(/<div class="photo_list card">[\s\S]*?<ul>([\s\S]*?)<\/ul>/);
+  const listMatch = html.match(/<div class="photo_list(?:\s+card)?">[\s\S]*?<ul>([\s\S]*?)<\/ul>/);
   const listHtml = listMatch?.[1] || "";
   const cards = [];
 
@@ -73,13 +88,14 @@ export function parseCards(html, page) {
       title,
       date: sourceParts[0] || "",
       ministry: sourceParts.slice(1).join(" ") || "",
-      image: proxiedImageUrl(image),
+      image: absoluteUrl(image),
       originalImage: absoluteUrl(image),
       href: absoluteUrl(href),
     });
   }
 
-  const lastPage = Number(html.match(/class="last"[\s\S]*?pageLink\((\d+)\)/)?.[1] || page);
+  const totalItems = Number(html.match(/<div class="paging">[\s\S]*?<span><i>[\s\S]*?<\/i>\s*\/\s*(\d+)<\/span>/)?.[1] || 0);
+  const lastPage = Number(html.match(/class="last"[\s\S]*?pageLink\((\d+)\)/)?.[1] || Math.ceil(totalItems / 20) || page);
   const pageNumbers = [...html.matchAll(/title="(\d+)페이지"/g)].map((match) => Number(match[1]));
 
   return {
@@ -87,7 +103,7 @@ export function parseCards(html, page) {
     lastPage,
     pageNumbers: [...new Set(pageNumbers)].filter(Boolean),
     cards,
-    source: koreaListUrl,
+    source: koreaPublicListUrl,
   };
 }
 
@@ -111,12 +127,13 @@ export async function fetchCards(page) {
     nRepCode: "",
   });
 
-  const response = await fetch(koreaListUrl, {
+  const response = await fetchWithRetry(koreaListUrl, {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
       "user-agent": "Mozilla/5.0",
       "accept-language": "ko-KR,ko;q=0.9,en;q=0.8",
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     },
     body,
   });
@@ -136,12 +153,11 @@ export async function fetchImage(urlValue) {
   if (url.hostname !== "www.korea.kr" || !url.pathname.startsWith("/newsWeb/resources/attaches/")) {
     throw new Error("unsupported image url");
   }
-
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: {
       "user-agent": "Mozilla/5.0",
       "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      "referer": koreaListUrl,
+      "referer": koreaPublicListUrl,
     },
   });
 

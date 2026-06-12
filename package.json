@@ -6,15 +6,12 @@
   "scripts": {
     "start": "node server.js",
     "dev": "PORT=4173 node server.js",
-    "worker:dev": "wrangler dev",
-    "deploy": "wrangler deploy",
     "visual:check": "node scripts/visual-check.js"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
-    "playwright": "^1.60.0",
-    "wrangler": "^4.0.0"
+    "playwright": "^1.60.0"
   }
 }
