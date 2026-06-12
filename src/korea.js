@@ -1,3 +1,5 @@
+import { readPersistentCache, writePersistentCache } from "./persistent-cache.js";
+
 export const koreaPublicOrigin = "https://www.korea.kr";
 export const koreaFetchOrigin = "https://www.korea.kr";
 export const koreaListUrl = `${koreaFetchOrigin}/multi/visualNewsList.do`;
@@ -5,6 +7,7 @@ export const koreaPublicListUrl = `${koreaPublicOrigin}/multi/visualNewsList.do`
 
 const cache = new Map();
 const cacheMs = 1000 * 60 * 10;
+const inflightCards = new Map();
 
 function formatDate(date) {
   const year = date.getUTCFullYear();
@@ -64,6 +67,45 @@ async function fetchWithRetry(url, options, attempts = 3) {
   throw lastError;
 }
 
+function cacheKey(type, id) {
+  return `v2:${type}:${id}`;
+}
+
+function isFresh(entry) {
+  return Boolean(entry && Date.now() < entry.expiresAt);
+}
+
+function setMemoryCache(store, key, data) {
+  const entry = {
+    createdAt: Date.now(),
+    expiresAt: Date.now() + cacheMs,
+    data,
+  };
+  store.set(key, entry);
+  return entry;
+}
+
+async function readThroughCache(store, namespace, key) {
+  const inMemory = store.get(key);
+  if (isFresh(inMemory)) {
+    return inMemory;
+  }
+
+  const persisted = await readPersistentCache(namespace, key);
+  if (isFresh(persisted)) {
+    store.set(key, persisted);
+    return persisted;
+  }
+
+  return persisted;
+}
+
+async function storeCache(store, namespace, key, data) {
+  const entry = setMemoryCache(store, key, data);
+  await writePersistentCache(namespace, key, data, cacheMs);
+  return entry;
+}
+
 export function parseCards(html, page) {
   const listMatch = html.match(/<div class="photo_list(?:\s+card)?">[\s\S]*?<ul>([\s\S]*?)<\/ul>/);
   const listHtml = listMatch?.[1] || "";
@@ -109,64 +151,59 @@ export function parseCards(html, page) {
 
 export async function fetchCards(page) {
   const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
-  const cached = cache.get(pageNumber);
-  if (cached && Date.now() - cached.createdAt < cacheMs) {
+  const key = cacheKey("cards", pageNumber);
+  const cached = await readThroughCache(cache, "cards", key);
+  if (isFresh(cached)) {
     return cached.data;
   }
 
-  const { startDate, endDate } = getDateRange();
-  const body = new URLSearchParams({
-    pageIndex: String(pageNumber),
-    repCodeType: "",
-    repCode: "",
-    startDate,
-    endDate,
-    srchWord: "",
-    cateId: "",
-    period: "",
-    nRepCode: "",
-  });
+  const inflight = inflightCards.get(key);
+  if (inflight) return inflight;
 
-  const response = await fetchWithRetry(koreaListUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "user-agent": "Mozilla/5.0",
-      "accept-language": "ko-KR,ko;q=0.9,en;q=0.8",
-      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    },
-    body,
-  });
+  const request = (async () => {
+    try {
+      const { startDate, endDate } = getDateRange();
+      const body = new URLSearchParams({
+        pageIndex: String(pageNumber),
+        repCodeType: "",
+        repCode: "",
+        startDate,
+        endDate,
+        srchWord: "",
+        cateId: "",
+        period: "",
+        nRepCode: "",
+      });
 
-  if (!response.ok) {
-    throw new Error(`korea.kr responded with ${response.status}`);
-  }
+      const response = await fetchWithRetry(koreaListUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "user-agent": "Mozilla/5.0",
+          "accept-language": "ko-KR,ko;q=0.9,en;q=0.8",
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        body,
+      });
 
-  const html = await response.text();
-  const data = parseCards(html, pageNumber);
-  cache.set(pageNumber, { createdAt: Date.now(), data });
-  return data;
-}
+      if (!response.ok) {
+        throw new Error(`korea.kr responded with ${response.status}`);
+      }
 
-export async function fetchImage(urlValue) {
-  const url = new URL(urlValue);
-  if (url.hostname !== "www.korea.kr" || !url.pathname.startsWith("/newsWeb/resources/attaches/")) {
-    throw new Error("unsupported image url");
-  }
-  const response = await fetchWithRetry(url, {
-    headers: {
-      "user-agent": "Mozilla/5.0",
-      "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      "referer": koreaPublicListUrl,
-    },
-  });
+      const html = await response.text();
+      const parsed = parseCards(html, pageNumber);
+      await storeCache(cache, "cards", key, parsed);
+      return parsed;
+    } catch (error) {
+      if (cached?.data) {
+        return cached.data;
+      }
+      throw error;
+    } finally {
+      inflightCards.delete(key);
+    }
+  })();
 
-  if (!response.ok) {
-    throw new Error(`image responded with ${response.status}`);
-  }
-
-  return {
-    body: await response.arrayBuffer(),
-    type: response.headers.get("content-type") || "image/jpeg",
-  };
+  inflightCards.set(key, request);
+  return request;
 }

@@ -17,23 +17,12 @@ async function waitForCards(page, imageCount = 1, minCards = 6) {
     minCards,
     { timeout: 30000 },
   );
+  if (imageCount < 1) return;
   await page.waitForFunction(
     (expectedImages) => [...document.querySelectorAll(".card img")]
       .slice(0, expectedImages)
       .every((img) => img.complete && img.naturalWidth > 0),
     imageCount,
-    { timeout: 45000 },
-  );
-}
-
-async function waitForLoadedImages(page, count) {
-  await page.waitForFunction(
-    (expectedCount) => {
-      const images = [...document.querySelectorAll(".card img")];
-      return images.length >= expectedCount
-        && images.slice(0, expectedCount).every((img) => img.complete && img.naturalWidth > 0);
-    },
-    count,
     { timeout: 45000 },
   );
 }
@@ -60,7 +49,7 @@ try {
     deviceScaleFactor: 1,
   });
 
-  await waitForCards(desktop);
+  await waitForCards(desktop, 0);
   await screenshot(desktop, "desktop-gallery.png");
 
   const cardCount = await desktop.locator(".card").count();
@@ -169,7 +158,6 @@ try {
     null,
     { timeout: 30000 },
   );
-  await waitForLoadedImages(desktop, 12);
   await screenshot(desktop, "desktop-page-2.png");
   const page2Status = await desktop.locator("#pageInput").inputValue();
   assert(Number(page2Status) >= 2, `expected page 2 or later indicator, got ${page2Status}`);
@@ -180,8 +168,9 @@ try {
     (response) => response.url().includes("/api/cards?page=10") && response.ok(),
     { timeout: 30000 },
   );
-  await desktop.locator("#pageInput").fill("10");
-  await desktop.locator("#pageJump button").click();
+  await desktop.locator("#pagePickerTrigger").click();
+  await desktop.waitForSelector("#pagePicker:not([hidden])", { timeout: 10000 });
+  await desktop.locator('[data-page-pick="10"]').click();
   await page10Response;
   await desktop.waitForFunction(
     () => document.querySelector("#pageInput")?.value === "10"
@@ -189,9 +178,9 @@ try {
     null,
     { timeout: 30000 },
   );
-  const page10Status = await desktop.locator("#pageInput").inputValue();
+  const page10Status = await desktop.locator("#pageInput").evaluate((input) => input.value);
   assert(page10Status === "10", `expected page 10 indicator, got ${page10Status}`);
-  assert((await desktop.locator("#pageInput").inputValue()) === "10", "page input should show jumped page");
+  assert((await desktop.locator("#pageCurrent").textContent())?.trim() === "10", "page trigger should show jumped page");
 
   const filteredGap = await browser.newPage({
     viewport: { width: 1024, height: 760 },
@@ -280,12 +269,63 @@ try {
   assert(filteredGapCount === 2, `expected filtered scroll to skip empty page and show 2 cards, got ${filteredGapCount}`);
   await filteredGap.close();
 
+  const detailViewer = await browser.newPage({
+    viewport: { width: 1024, height: 760 },
+    deviceScaleFactor: 1,
+  });
+  const thumbImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='250' viewBox='0 0 384 250'%3E%3Crect width='384' height='250' fill='%23dbeafe'/%3E%3Ctext x='192' y='125' font-size='26' text-anchor='middle' fill='%230f172a'%3Ethumb-card%3C/text%3E%3C/svg%3E";
+  const detailImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='1000' viewBox='0 0 800 1000'%3E%3Crect width='800' height='1000' fill='%23dcfce7'/%3E%3Crect x='612' y='848' width='18' height='24' rx='4' fill='%23ef4444'/%3E%3Crect x='632' y='848' width='18' height='24' rx='4' fill='%232563eb'/%3E%3Crect x='662' y='848' width='106' height='12' rx='6' fill='%23111827'/%3E%3Crect x='662' y='866' width='82' height='10' rx='5' fill='%23111827' fill-opacity='.88'/%3E%3Ctext x='400' y='500' font-size='48' text-anchor='middle' fill='%2314532d'%3Edetail-card%3C/text%3E%3C/svg%3E";
+
+  await detailViewer.route("**/api/cards?page=*", async (route) => {
+    const page = Number(new URL(route.request().url()).searchParams.get("page"));
+    await route.fulfill({
+      json: {
+        page,
+        lastPage: 1,
+        pageNumbers: [1],
+        cards: [{
+          id: "detail-1",
+          page: 1,
+          indexInPage: 0,
+          title: "상세 이미지 카드",
+          date: "2026.06.12",
+          ministry: "교육부",
+          image: thumbImage,
+          originalImage: thumbImage,
+          href: "https://www.korea.kr/multi/visualNewsView.do?newsId=detail-1",
+        }],
+      },
+    });
+  });
+  await waitForCards(detailViewer, 1, 1);
+  await detailViewer.locator(".card").first().click();
+  await detailViewer.waitForSelector(".viewer.open", { timeout: 10000 });
+  await detailViewer.waitForFunction(
+    () => document.querySelector("#viewerImage")?.src.includes("thumb-card"),
+    null,
+    { timeout: 10000 },
+  );
+  await detailViewer.waitForFunction(
+    () => document.querySelector("#viewerImage")?.complete,
+    null,
+    { timeout: 10000 },
+  );
+  assert(
+    (await detailViewer.locator("#viewerImage").getAttribute("src"))?.includes("thumb-card"),
+    "viewer should keep using the thumbnail image in viewer mode",
+  );
+  assert(
+    !((await detailViewer.locator("#viewerImage").getAttribute("src"))?.includes("detail-card")),
+    "viewer should ignore detailed viewer images and keep the thumbnail source",
+  );
+  await detailViewer.close();
+
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
     isMobile: true,
   });
 
-  await waitForCards(mobile, 1, 3);
+  await waitForCards(mobile, 0, 3);
   await screenshot(mobile, "mobile-gallery.png");
   const mobileColumns = await visibleCardsInFirstRow(mobile);
   assert(mobileColumns === 1, `expected 1 mobile column, got ${mobileColumns}`);

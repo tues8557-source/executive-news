@@ -1,5 +1,6 @@
 {
   "cleanUrls": true,
+  "regions": ["icn1"],
   "functions": {
     "api/*.js": {
       "maxDuration": 10

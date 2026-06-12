@@ -17,7 +17,11 @@ const filterTrigger = document.querySelector("#filterTrigger");
 const filterOptions = document.querySelector("#filterOptions");
 const pageJump = document.querySelector("#pageJump");
 const pageInput = document.querySelector("#pageInput");
+const pageCurrent = document.querySelector("#pageCurrent");
 const pageTotal = document.querySelector("#pageTotal");
+const pagePickerTrigger = document.querySelector("#pagePickerTrigger");
+const pagePicker = document.querySelector("#pagePicker");
+const pagePickerGrid = document.querySelector("#pagePickerGrid");
 const scrollSentinel = document.querySelector("#scrollSentinel");
 const firstPage = document.querySelector("#firstPage");
 const prevPage = document.querySelector("#prevPage");
@@ -75,10 +79,51 @@ function positionFilterMenu() {
   filterOptions.style.left = `${Math.min(rect.left, window.innerWidth - width - 12)}px`;
 }
 
+function positionPagePicker() {
+  const rect = pagePickerTrigger.getBoundingClientRect();
+  const width = Math.max(232, rect.width);
+  pagePicker.style.minWidth = `${width}px`;
+  pagePicker.style.top = `${rect.bottom + 8}px`;
+  pagePicker.style.left = `${Math.min(rect.left, window.innerWidth - width - 12)}px`;
+}
+
 function setFilterMenu(open) {
+  if (open) setPagePicker(false);
   filterOptions.hidden = !open;
   filterTrigger.setAttribute("aria-expanded", String(open));
   if (open) positionFilterMenu();
+}
+
+function renderPagePicker() {
+  if (state.lastPage < 1) {
+    pagePickerGrid.innerHTML = "";
+    return;
+  }
+
+  pagePickerGrid.innerHTML = Array.from({ length: state.lastPage }, (_, index) => index + 1).map((page) => `
+    <button
+      class="page-picker-option${page === state.page ? " current" : ""}"
+      type="button"
+      data-page-pick="${page}"
+      aria-selected="${page === state.page ? "true" : "false"}"
+    >${page}</button>
+  `).join("");
+}
+
+function setPagePicker(open) {
+  if (open) {
+    setFilterMenu(false);
+    renderPagePicker();
+    positionPagePicker();
+    requestAnimationFrame(() => {
+      pagePickerGrid.querySelector(".page-picker-option.current")?.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+      });
+    });
+  }
+  pagePicker.hidden = !open;
+  pagePickerTrigger.setAttribute("aria-expanded", String(open));
 }
 
 async function loadPage(page, options = {}) {
@@ -116,7 +161,8 @@ async function loadPage(page, options = {}) {
       state.loadedPages = new Set([data.page]);
     } else {
       const existingIds = new Set(state.cards.map((card) => card.id));
-      state.cards = [...state.cards, ...data.cards.filter((card) => !existingIds.has(card.id))];
+      const appendedCards = data.cards.filter((card) => !existingIds.has(card.id));
+      state.cards = [...state.cards, ...appendedCards];
       state.cards.sort((a, b) => a.page - b.page || a.indexInPage - b.indexInPage);
     }
 
@@ -174,18 +220,16 @@ function renderGallery() {
 }
 
 function updatePager() {
+  pageCurrent.textContent = String(state.page);
   pageTotal.textContent = `/ ${state.lastPage}쪽`;
-  pageInput.max = String(state.lastPage);
-  if (document.activeElement !== pageInput) {
-    pageInput.value = String(state.page);
-  }
+  pageInput.value = String(state.page);
+  renderPagePicker();
 
   firstPage.disabled = state.loading || state.page <= 1;
   prevPage.disabled = state.loading || state.page <= 1;
   nextPage.disabled = state.loading || state.page >= state.lastPage;
   lastPage.disabled = state.loading || state.page >= state.lastPage;
-  pageInput.disabled = state.loading;
-  pageJump.querySelector("button").disabled = state.loading;
+  pagePickerTrigger.disabled = state.loading || state.lastPage <= 1;
   pageJump.classList.toggle("loading", state.loading);
 }
 
@@ -327,30 +371,40 @@ filterTrigger.addEventListener("click", () => {
   setFilterMenu(filterOptions.hidden);
 });
 
+pagePickerTrigger.addEventListener("click", () => {
+  setPagePicker(pagePicker.hidden);
+});
+
+pagePickerGrid.addEventListener("click", (event) => {
+  const pageButton = event.target.closest("[data-page-pick]");
+  if (!pageButton) return;
+  setPagePicker(false);
+  loadPage(Number(pageButton.dataset.pagePick), { scrollToPage: true });
+});
+
 document.addEventListener("click", (event) => {
-  if (filterOptions.hidden) return;
-  if (filterOptions.contains(event.target) || filterTrigger.contains(event.target)) return;
-  setFilterMenu(false);
+  if (!filterOptions.hidden && !filterOptions.contains(event.target) && !filterTrigger.contains(event.target)) {
+    setFilterMenu(false);
+  }
+  if (!pagePicker.hidden && !pagePicker.contains(event.target) && !pagePickerTrigger.contains(event.target)) {
+    setPagePicker(false);
+  }
 });
 
 window.addEventListener("resize", () => {
   if (!filterOptions.hidden) positionFilterMenu();
+  if (!pagePicker.hidden) positionPagePicker();
 });
 
 window.addEventListener("scroll", () => {
   if (!filterOptions.hidden) positionFilterMenu();
+  if (!pagePicker.hidden) positionPagePicker();
 }, { passive: true });
 
 firstPage.addEventListener("click", () => loadPage(1, { replace: true, scrollToPage: true }));
 prevPage.addEventListener("click", () => loadPage(state.page - 1, { scrollToPage: true }));
 nextPage.addEventListener("click", () => loadPage(state.page + 1, { scrollToPage: true }));
 lastPage.addEventListener("click", () => loadPage(state.lastPage, { scrollToPage: true }));
-pageJump.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const page = Math.max(1, Math.min(state.lastPage, Number(pageInput.value) || state.page));
-  pageInput.value = String(page);
-  loadPage(page, { scrollToPage: true });
-});
 
 closeViewer.addEventListener("click", closeViewerModal);
 viewerPrev.addEventListener("click", () => goViewer(-1));
@@ -370,6 +424,9 @@ viewer.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !pagePicker.hidden) {
+    setPagePicker(false);
+  }
   if (!viewer.classList.contains("open")) return;
 
   if (event.key === "Escape") closeViewerModal();

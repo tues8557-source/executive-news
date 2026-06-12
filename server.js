@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fetchCards, fetchImage } from "./src/korea.js";
+import { fetchCards } from "./src/korea.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
@@ -17,8 +17,18 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
 };
 
+const apiCacheControl = "public, max-age=0, s-maxage=600, stale-while-revalidate=86400";
+
 function sendJson(res, status, payload) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
+
+function sendCachedJson(res, status, payload) {
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": apiCacheControl,
+  });
   res.end(JSON.stringify(payload));
 }
 
@@ -51,27 +61,10 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/cards") {
     try {
       const data = await fetchCards(url.searchParams.get("page") || "1");
-      sendJson(res, 200, data);
+      sendCachedJson(res, 200, data);
     } catch (error) {
       sendJson(res, 502, {
         error: "카드뉴스를 가져오지 못했습니다.",
-        detail: error.message,
-      });
-    }
-    return;
-  }
-
-  if (url.pathname === "/api/image") {
-    try {
-      const image = await fetchImage(url.searchParams.get("url") || "");
-      res.writeHead(200, {
-        "content-type": image.type,
-        "cache-control": "public, max-age=3600",
-      });
-      res.end(Buffer.from(image.body));
-    } catch (error) {
-      sendJson(res, 400, {
-        error: "이미지를 가져오지 못했습니다.",
         detail: error.message,
       });
     }

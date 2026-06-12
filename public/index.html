@@ -23,17 +23,28 @@
 
     <main>
       <section class="toolbar" aria-label="페이지 이동">
-        <button class="icon-button" id="firstPage" type="button" aria-label="첫 페이지">|&lt;</button>
-        <button class="icon-button" id="prevPage" type="button" aria-label="이전 페이지">&lt;</button>
-        <form class="page-indicator page-jump" id="pageJump" aria-label="페이지 바로 이동" aria-live="polite">
-          <input id="pageInput" type="number" inputmode="numeric" min="1" value="1" aria-label="이동할 페이지">
-          <span id="pageTotal">/ 1쪽</span>
-          <button type="submit" aria-label="입력한 페이지로 이동">이동</button>
-        </form>
-        <button class="icon-button" id="nextPage" type="button" aria-label="다음 페이지">&gt;</button>
-        <button class="icon-button" id="lastPage" type="button" aria-label="마지막 페이지">&gt;|</button>
-        <div class="status" id="status" role="status">불러오는 중</div>
-        <button class="filter-trigger" id="filterTrigger" type="button" aria-expanded="false" aria-controls="filterOptions">필터</button>
+        <div class="toolbar-nav" role="group" aria-label="페이지 이동 컨트롤">
+          <button class="icon-button" id="firstPage" type="button" aria-label="첫 페이지">|&lt;</button>
+          <button class="icon-button" id="prevPage" type="button" aria-label="이전 페이지">&lt;</button>
+          <div class="page-jump" id="pageJump" aria-live="polite">
+            <input id="pageInput" type="hidden" value="1">
+            <button class="page-picker-trigger" id="pagePickerTrigger" type="button" aria-label="페이지 선택" aria-expanded="false" aria-controls="pagePicker">
+              <span class="page-current" id="pageCurrent">1</span>
+              <span class="page-total-wrap">
+                <span id="pageTotal">/ 1쪽</span>
+              </span>
+            </button>
+          </div>
+          <button class="icon-button" id="nextPage" type="button" aria-label="다음 페이지">&gt;</button>
+          <button class="icon-button" id="lastPage" type="button" aria-label="마지막 페이지">&gt;|</button>
+        </div>
+        <div class="toolbar-meta">
+          <div class="status-shell">
+            <span class="status-dot" aria-hidden="true"></span>
+            <div class="status" id="status" role="status">불러오는 중</div>
+          </div>
+          <button class="filter-trigger" id="filterTrigger" type="button" aria-expanded="false" aria-controls="filterOptions">필터</button>
+        </div>
       </section>
 
       <section class="gallery" id="gallery" aria-label="카드뉴스 목록"></section>
@@ -51,11 +62,17 @@
       </label>
     </div>
 
+    <div class="page-picker-menu" id="pagePicker" hidden>
+      <div class="page-picker-grid" id="pagePickerGrid" role="listbox" aria-label="페이지 선택"></div>
+    </div>
+
     <div class="viewer" id="viewer" aria-hidden="true">
       <button class="viewer-close" id="closeViewer" type="button" aria-label="닫기">x</button>
       <button class="viewer-nav viewer-prev" id="viewerPrev" type="button" aria-label="이전 카드">&lt;</button>
       <figure class="viewer-frame">
-        <img id="viewerImage" alt="">
+        <div class="viewer-media" id="viewerMedia">
+          <img id="viewerImage" alt="">
+        </div>
         <figcaption class="viewer-caption">
           <div>
             <p id="viewerTitle"></p>
